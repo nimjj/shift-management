@@ -59,11 +59,46 @@ export default async function RegeneratePage() {
         </p>
       </div>
 
+      {diff.kept.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Kept as they are ({diff.kept.length})</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              These shifts have people assigned, so regeneration leaves them alone — the agents already have that time
+              in their calendar. Change one by hand on the grid if you need to.
+            </p>
+            <Table>
+              <TableBody>
+                {diff.kept.map((k) => (
+                  <TableRow key={k.shift.id}>
+                    <TableCell>
+                      <Block id={k.shift.template_id} />
+                    </TableCell>
+                    <TableCell>{both(k.shift.starts_at, k.shift.ends_at, k.shift.template_id)}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {k.change === "removed"
+                        ? "would have been removed"
+                        : `would have moved to ${formatRangeIn(
+                            new Date(k.to!.starts_at),
+                            new Date(k.to!.ends_at),
+                            displayTz,
+                          )}`}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {diffIsEmpty(diff) ? (
         <Card>
           <CardContent className="pt-6 text-sm">
             Nothing to change: all {diff.unchanged} upcoming shift{diff.unchanged === 1 ? "" : "s"} already match your
-            blocks.
+            blocks{diff.kept.length > 0 ? ", apart from the assigned ones above" : ""}.
           </CardContent>
         </Card>
       ) : (

@@ -15,7 +15,7 @@ import {
  * Apply action, so what you review is computed by the exact same code that applies it.
  */
 export async function loadRegeneration(supabase: SupabaseClient<Database>, now: Date = new Date()) {
-  const [orgRes, templatesRes, shiftsRes] = await Promise.all([
+  const [orgRes, templatesRes, shiftsRes, assignedRes] = await Promise.all([
     supabase.from("org_settings").select("*").eq("id", 1).single(),
     supabase.from("shift_templates").select("*"),
     supabase
@@ -24,18 +24,22 @@ export async function loadRegeneration(supabase: SupabaseClient<Database>, now: 
       .not("template_id", "is", null)
       .gt("starts_at", now.toISOString())
       .limit(2000),
+    // Shifts that already have people on them are never moved or removed (see diffShifts).
+    supabase.from("assignments").select("shift_id").limit(10000),
   ]);
   if (orgRes.error) throw orgRes.error;
   if (templatesRes.error) throw templatesRes.error;
   if (shiftsRes.error) throw shiftsRes.error;
+  if (assignedRes.error) throw assignedRes.error;
 
   const org = orgRes.data;
   const templates = templatesRes.data as TemplateInput[];
   const existing = shiftsRes.data as ExistingShift[];
+  const assignedShiftIds = new Set((assignedRes.data ?? []).map((a) => a.shift_id));
 
   const { range } = regenerationScope(existing, now);
   const expected = range ? expectedShifts(templates, org, range.from, range.to) : [];
-  const diff = diffShifts(existing, expected, now);
+  const diff = diffShifts(existing, expected, now, assignedShiftIds);
 
   return { org, templates: templatesRes.data, diff, hash: diffHash(diff), now };
 }

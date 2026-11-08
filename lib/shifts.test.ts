@@ -213,6 +213,65 @@ describe("diffShifts", () => {
   });
 });
 
+describe("diffShifts with assignments (M3)", () => {
+  it("KEEPS an assigned shift instead of moving it, and says where it would have gone", () => {
+    const { existing } = scenario();
+    const changed = SEED.map((t) => (t.id === "t2a" ? { ...t, start_local_time: "11:00:00" } : t));
+    const { from, to } = regenerationScope(existing, NOW).range!;
+    const expected = expectedShifts(changed, org, from, to);
+
+    const wouldMove = diffShifts(existing, expected, NOW).moved;
+    expect(wouldMove).toHaveLength(3);
+
+    const assigned = new Set([wouldMove[0].id]);
+    const d = diffShifts(existing, expected, NOW, assigned);
+
+    expect(d.moved).toHaveLength(2);
+    expect(d.moved.some((m) => m.id === wouldMove[0].id)).toBe(false);
+    expect(d.kept).toHaveLength(1);
+    expect(d.kept[0].shift.id).toBe(wouldMove[0].id);
+    expect(d.kept[0].change).toBe("moved");
+    expect(d.kept[0].to).toEqual(wouldMove[0].to);
+  });
+
+  it("KEEPS an assigned shift instead of removing it", () => {
+    const { existing } = scenario();
+    const archived = SEED.map((t) => (t.id === "t3b" ? { ...t, active: false } : t));
+    const { from, to } = regenerationScope(existing, NOW).range!;
+    const expected = expectedShifts(archived, org, from, to);
+
+    const wouldRemove = diffShifts(existing, expected, NOW).removed;
+    const d = diffShifts(existing, expected, NOW, new Set([wouldRemove[0].id]));
+
+    expect(d.removed).toHaveLength(2);
+    expect(d.kept).toHaveLength(1);
+    expect(d.kept[0].change).toBe("removed");
+    expect(d.kept[0].to).toBeNull();
+  });
+
+  it("leaves an assigned shift that needs no change counted as unchanged, not kept", () => {
+    const { base, existing } = scenario();
+    const d = diffShifts(existing, base, NOW, new Set(existing.map((s) => s.id)));
+    expect(d.kept).toHaveLength(0);
+    expect(d.unchanged).toBe(15);
+    expect(diffIsEmpty(d)).toBe(true);
+  });
+
+  it("keeps assigned shifts out of the apply payload, and the hash notices them", () => {
+    const { existing } = scenario();
+    const changed = SEED.map((t) => (t.id === "t2a" ? { ...t, start_local_time: "11:00:00" } : t));
+    const { from, to } = regenerationScope(existing, NOW).range!;
+    const expected = expectedShifts(changed, org, from, to);
+
+    const plain = diffShifts(existing, expected, NOW);
+    const withAssignment = diffShifts(existing, expected, NOW, new Set([plain.moved[0].id]));
+
+    expect(regenerationPayload(withAssignment).moved.map((m) => m.id)).not.toContain(plain.moved[0].id);
+    // Assigning someone between the preview and Apply must invalidate the preview.
+    expect(diffHash(withAssignment)).not.toBe(diffHash(plain));
+  });
+});
+
 describe("diffHash / regenerationPayload", () => {
   const moved = () => {
     const { existing } = scenario();

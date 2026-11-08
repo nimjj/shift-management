@@ -117,10 +117,20 @@ export type MovedShift = {
   to: { starts_at: string; ends_at: string };
 };
 
+/** A shift regeneration would have changed, but which has people on it, so it is left alone. */
+export type KeptShift = {
+  shift: ExistingShift;
+  change: "moved" | "removed";
+  /** where it would have gone, if `change` is "moved" */
+  to: { starts_at: string; ends_at: string } | null;
+};
+
 export type ShiftDiff = {
   moved: MovedShift[];
   added: ExpectedShift[];
   removed: ExistingShift[];
+  /** Shifts with assignments that regeneration deliberately does NOT touch (M3). */
+  kept: KeptShift[];
   unchanged: number;
 };
 
@@ -148,22 +158,37 @@ export function regenerationScope(
  *  - moved:   same occurrence, different times
  *  - added:   expected but missing (e.g. a template's weekday changed)
  *  - removed: exists but no longer expected (template archived, or its weekday changed)
+ *  - kept:    would have moved or been removed, but has people assigned to it
+ *
+ * `assignedShiftIds` are the shifts that have at least one assignment. They are never moved or
+ * removed: an agent already has that time in their calendar, so changing it behind their back is
+ * exactly the kind of surprise this app exists to stop. They are reported as "kept" instead, and
+ * apply_shift_regeneration refuses the whole apply if one of them is in the payload anyway.
  */
-export function diffShifts(existing: readonly ExistingShift[], expected: readonly ExpectedShift[], now: Date): ShiftDiff {
+export function diffShifts(
+  existing: readonly ExistingShift[],
+  expected: readonly ExpectedShift[],
+  now: Date,
+  assignedShiftIds: ReadonlySet<string> = new Set(),
+): ShiftDiff {
   const { shifts } = regenerationScope(existing, now);
   const futureExpected = expected.filter((e) => new Date(e.starts_at) > now);
 
   const expectedByKey = new Map(futureExpected.map((e) => [key(e.template_id, e.occurrence_date), e]));
   const existingKeys = new Set(shifts.map((s) => key(s.template_id!, s.occurrence_date!)));
 
-  const diff: ShiftDiff = { moved: [], added: [], removed: [], unchanged: 0 };
+  const diff: ShiftDiff = { moved: [], added: [], removed: [], kept: [], unchanged: 0 };
 
   for (const s of shifts) {
     const e = expectedByKey.get(key(s.template_id!, s.occurrence_date!));
+    const assigned = assignedShiftIds.has(s.id);
     if (!e) {
-      diff.removed.push(s);
+      if (assigned) diff.kept.push({ shift: s, change: "removed", to: null });
+      else diff.removed.push(s);
     } else if (sameInstant(s.starts_at, e.starts_at) && sameInstant(s.ends_at, e.ends_at)) {
       diff.unchanged += 1;
+    } else if (assigned) {
+      diff.kept.push({ shift: s, change: "moved", to: { starts_at: e.starts_at, ends_at: e.ends_at } });
     } else {
       diff.moved.push({
         id: s.id,
@@ -181,6 +206,7 @@ export function diffShifts(existing: readonly ExistingShift[], expected: readonl
   diff.moved.sort((a, b) => a.to.starts_at.localeCompare(b.to.starts_at));
   diff.added.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   diff.removed.sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  diff.kept.sort((a, b) => a.shift.starts_at.localeCompare(b.shift.starts_at));
   return diff;
 }
 
@@ -199,6 +225,9 @@ export function diffHash(d: ShiftDiff): string {
     moved: d.moved.map((m) => [m.id, t(m.to.starts_at), t(m.to.ends_at)]).sort(),
     added: d.added.map((a) => [a.template_id, a.occurrence_date, t(a.starts_at), t(a.ends_at)]).sort(),
     removed: d.removed.map((r) => r.id).sort(),
+    // Included so that assigning someone to a shift between the preview and Apply invalidates the
+    // preview and asks for a re-review, rather than silently applying a different set of changes.
+    kept: d.kept.map((k) => k.shift.id).sort(),
   };
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }

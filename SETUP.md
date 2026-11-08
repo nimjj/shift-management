@@ -131,3 +131,36 @@ to the dev project (applied through the Supabase connector; the same SQL is in `
 - Changing a block never touches existing shifts by itself. Only **Apply** on the regenerate page does, and
   it only moves or removes shifts that have not started.
 - Block times are the ones from the old roster sheet; confirm them with the client before go-live.
+
+---
+
+## M3: Assignment grid
+
+Nothing manual to set up. The `assignments` table and its functions are already applied to the dev
+project (same SQL in `supabase/migrations/20261108000004_assignments.sql` and `...0005_...sql`).
+
+### Checks for M3 (about 10 minutes, signed in as a supervisor)
+1. **Grid**: the new **Grid** link shows one row per block and four week columns, each cell with the
+   shift time in Colombo and how many people are on it (`0/1`). Use **‹ Earlier** / **Later ›** to move
+   through the weeks; cells with no generated shift read "not generated".
+2. **Assign**: click a cell, tick two people, set one to **backup**, press **Save roster**. The cell
+   now lists both, the backup is tagged, and the count shows `1/1`.
+3. **Reassign and unassign**: reopen the cell, untick one person and tick someone else, save. Then
+   untick everyone and save — the cell reads "Nobody assigned". Each save is one row in `audit_log`
+   (action `assignments.set`), with the before and after rosters in it.
+4. **Copy a week**: fill one week's cells, then use **Copy a week** from that week to the next. It
+   reports how many shifts it filled. Run it again: it fills 0 and says they "already had people on
+   it" — it never overwrites a roster.
+5. **Regeneration leaves assigned shifts alone**: with someone assigned to a future 2a shift, change
+   Block 2a's start time and open **Shifts › Review & regenerate**. The assigned shift appears under
+   **Kept as they are** (with where it would have gone) and is *not* in the Moved list. Apply, then put
+   2a back.
+6. **Agent view**: sign in as the agent you assigned. They see **My shifts** with only their own
+   shifts, no Grid or Settings link, and `/grid` bounces them to the home page.
+7. **Refusals**: a finished shift cannot be rostered (its cell says so), and once M4's check-in exists,
+   somebody who has checked in cannot be removed from a shift.
+
+### Notes
+- Assign, reassign and unassign are all one database call that sets the whole roster of a cell, so a
+  cell can never be left half-changed and every edit writes exactly one audit row.
+- Each assignment gets a 64-character check-in token now; M6 puts it in the calendar invite.

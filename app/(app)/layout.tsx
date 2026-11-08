@@ -15,8 +15,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <Link href="/" className="font-semibold">
               ShiftBoard
             </Link>
+            <Link href="/my-shifts" className="text-muted-foreground hover:text-foreground">
+              My shifts
+            </Link>
             {isSupervisor ? (
               <>
+                <Link href="/grid" className="text-muted-foreground hover:text-foreground">
+                  Grid
+                </Link>
                 <Link href="/shifts" className="text-muted-foreground hover:text-foreground">
                   Shifts
                 </Link>

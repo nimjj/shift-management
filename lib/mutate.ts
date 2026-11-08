@@ -19,7 +19,21 @@ export type MutationData = {
   generate_shifts: { requested: number; inserted: number; skipped: number };
   apply_shift_regeneration: { moved: number; added: number; removed: number };
   update_org_settings: OrgSettings;
+  set_shift_assignments: {
+    shift_id: string;
+    added: number;
+    removed: number;
+    changed: number;
+    total: number;
+  };
+  copy_week_assignments: {
+    shifts_filled: number;
+    assignments_created: number;
+    skipped: { to_shift_id: string; reason: CopySkipReason }[];
+  };
 };
+
+export type CopySkipReason = "missing" | "finished" | "already_assigned" | "source_empty";
 
 export type MutationName = keyof MutationData;
 export type MutationArgs<F extends MutationName> = Database["public"]["Functions"][F]["Args"];

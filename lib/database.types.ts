@@ -17,6 +17,73 @@ export type Database = {
   }
   public: {
     Tables: {
+      assignments: {
+        Row: {
+          calendar_attempts: number
+          calendar_error: string | null
+          calendar_event_id: string | null
+          calendar_status: string
+          checked_in_at: string | null
+          checkin_token: string
+          created_at: string
+          created_by: string | null
+          employee_id: string
+          id: string
+          role: Database["public"]["Enums"]["assignment_role"]
+          shift_id: string
+        }
+        Insert: {
+          calendar_attempts?: number
+          calendar_error?: string | null
+          calendar_event_id?: string | null
+          calendar_status?: string
+          checked_in_at?: string | null
+          checkin_token?: string
+          created_at?: string
+          created_by?: string | null
+          employee_id: string
+          id?: string
+          role?: Database["public"]["Enums"]["assignment_role"]
+          shift_id: string
+        }
+        Update: {
+          calendar_attempts?: number
+          calendar_error?: string | null
+          calendar_event_id?: string | null
+          calendar_status?: string
+          checked_in_at?: string | null
+          checkin_token?: string
+          created_at?: string
+          created_by?: string | null
+          employee_id?: string
+          id?: string
+          role?: Database["public"]["Enums"]["assignment_role"]
+          shift_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assignments_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assignments_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -275,10 +342,16 @@ export type Database = {
         }
         Returns: Json
       }
+      copy_week_assignments: { Args: { p_pairs: Json }; Returns: Json }
       current_employee_id: { Args: never; Returns: string }
       generate_shifts: { Args: { p_rows: Json }; Returns: Json }
       hook_before_user_created: { Args: { event: Json }; Returns: Json }
       is_supervisor: { Args: never; Returns: boolean }
+      new_checkin_token: { Args: never; Returns: string }
+      set_shift_assignments: {
+        Args: { p_assignees: Json; p_shift_id: string }
+        Returns: Json
+      }
       update_employee: {
         Args: {
           p_active: boolean
@@ -342,6 +415,7 @@ export type Database = {
       }
     }
     Enums: {
+      assignment_role: "primary" | "backup"
       employee_role: "supervisor" | "agent"
     }
     CompositeTypes: {
@@ -358,3 +432,4 @@ export type OrgSettings = Database["public"]["Tables"]["org_settings"]["Row"]
 export type EmployeeRole = Database["public"]["Enums"]["employee_role"]
 export type ShiftTemplate = Database["public"]["Tables"]["shift_templates"]["Row"]
 export type Shift = Database["public"]["Tables"]["shifts"]["Row"]
+export type Assignment = Database["public"]["Tables"]["assignments"]["Row"]
