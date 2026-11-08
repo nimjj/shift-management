@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { requireSupervisor } from "@/lib/auth";
 
-const SECTIONS = [{ href: "/settings/employees", label: "Employees & roles" }];
+const SECTIONS = [
+  { href: "/settings/general", label: "General" },
+  { href: "/settings/templates", label: "Shift templates" },
+  { href: "/settings/employees", label: "Employees & roles" },
+];
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   await requireSupervisor();

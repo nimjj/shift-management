@@ -102,3 +102,32 @@ Then **Actions > Keep Supabase alive > Run workflow** once to confirm it goes gr
 ```
 npm run typecheck && npm run lint && npm test
 ```
+
+---
+
+## M2: Shift templates and shift generation
+
+Nothing manual to set up. The schema, the five seed blocks and the database functions are already applied
+to the dev project (applied through the Supabase connector; the same SQL is in `supabase/migrations/` and
+`supabase/seed.sql` for a fresh project, e.g. production later).
+
+### Checks for M2 (about 10 minutes, signed in as a supervisor)
+1. **Settings > Shift templates**: you see Blocks 1, 2a, 2b, 3a, 3b. The "Next, in Asia/Colombo" column shows
+   Block 1 as a **Sat 03:30-09:30** shift now that the US is on standard time (it was 02:30 until 1 Nov).
+2. **Shifts > Generate shifts** with 4 weeks: it reports about 17 new shifts. Block 1 on a Friday shows
+   16:00 in Chicago and Sat 03:30 in Colombo. Press it again: **0 new** ("already existed").
+3. **Regenerate preview**: edit Block 2a (Settings > Shift templates) so it starts at 11:00 and save.
+   Existing shifts do not change. Open **Shifts > Review & regenerate**: it lists exactly the future 2a shifts
+   as **moved**, showing now vs after in both zones, and nothing else. Press Apply. Then check the
+   `audit_log` table (action `shifts.regenerate`). Change 2a back to 10:00 and apply again.
+4. **Archive**: untick Active on a block and save. Generating again produces no new shifts for it; the
+   regenerate preview offers to remove its future shifts.
+5. **Settings > General**: change the client time zone (for example to America/New_York), generate more weeks,
+   and confirm the new shifts follow it. **Set it back to America/Chicago** afterwards.
+6. **Refusals** (each shows a clear message and changes nothing): an unknown time zone, a duplicate block
+   code, a block that ends before it starts, and removing your own domain from the allowed domains.
+
+### Notes
+- Changing a block never touches existing shifts by itself. Only **Apply** on the regenerate page does, and
+  it only moves or removes shifts that have not started.
+- Block times are the ones from the old roster sheet; confirm them with the client before go-live.

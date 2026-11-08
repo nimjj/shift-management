@@ -22,10 +22,12 @@ export function mapPostgresError(err: PgErrorLike): ActionError | null {
       return new ActionError(err.message);
     case "42501":
       return new ActionError("You don't have permission to do that.");
-    case "23505":
-      return /employees_email_key/.test(`${err.message} ${err.details ?? ""}`)
-        ? new ActionError("An employee with that email already exists.")
-        : new ActionError("That already exists.");
+    case "23505": {
+      const text = `${err.message} ${err.details ?? ""}`;
+      if (/employees_email_key/.test(text)) return new ActionError("An employee with that email already exists.");
+      if (/shift_templates_code_key/.test(text)) return new ActionError("A block with that code already exists.");
+      return new ActionError("That already exists.");
+    }
     default:
       return null;
   }

@@ -30,6 +30,14 @@ describe("mapPostgresError", () => {
     expect(e?.message).toBe("An employee with that email already exists.");
   });
 
+  it("maps a duplicate block code", () => {
+    const e = mapPostgresError({
+      code: "23505",
+      message: 'duplicate key value violates unique constraint "shift_templates_code_key"',
+    });
+    expect(e?.message).toBe("A block with that code already exists.");
+  });
+
   it("gives a generic message for other unique violations", () => {
     expect(mapPostgresError({ code: "23505", message: "x_other_key" })?.message).toBe("That already exists.");
   });

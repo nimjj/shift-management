@@ -16,9 +16,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ShiftBoard
             </Link>
             {isSupervisor ? (
-              <Link href="/settings" className="text-muted-foreground hover:text-foreground">
-                Settings
-              </Link>
+              <>
+                <Link href="/shifts" className="text-muted-foreground hover:text-foreground">
+                  Shifts
+                </Link>
+                <Link href="/settings" className="text-muted-foreground hover:text-foreground">
+                  Settings
+                </Link>
+              </>
             ) : null}
           </nav>
           <div className="flex items-center gap-3 text-sm">

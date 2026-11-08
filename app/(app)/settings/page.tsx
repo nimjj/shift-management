@@ -3,5 +3,5 @@ import { requireSupervisor } from "@/lib/auth";
 
 export default async function SettingsIndexPage() {
   await requireSupervisor();
-  redirect("/settings/employees");
+  redirect("/settings/general");
 }

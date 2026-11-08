@@ -7,13 +7,18 @@
 //   4. Call it from a supervisorAction handler via ctx.mutate(...).
 // There is intentionally no app-side audit insert: that would not be atomic with the write.
 
-import type { Database, Employee } from "@/lib/database.types";
+import type { Database, Employee, OrgSettings, ShiftTemplate } from "@/lib/database.types";
 import { isPgErrorLike, mapPostgresError, type PgErrorLike } from "@/lib/db-errors";
 
 /** Result type of each mutation's `data`. Add new mutations here. */
 export type MutationData = {
   create_employee: Employee;
   update_employee: Employee;
+  create_shift_template: ShiftTemplate;
+  update_shift_template: ShiftTemplate;
+  generate_shifts: { requested: number; inserted: number; skipped: number };
+  apply_shift_regeneration: { moved: number; added: number; removed: number };
+  update_org_settings: OrgSettings;
 };
 
 export type MutationName = keyof MutationData;
