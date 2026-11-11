@@ -25,3 +25,7 @@ insert into public.shift_templates (code, name, start_weekday, start_local_time,
   ('3a', 'Block 3a · Sun AM', 0, '10:00', 0, '16:00', 1, '#f59e0b'),
   ('3b', 'Block 3b · Sun PM', 0, '16:00', 0, '22:00', 1, '#a855f7')
 on conflict (code) do nothing;
+
+-- The default 10 / 15 / 17 notification ladder is seeded by migration 20261111000007 (only when the
+-- table is empty), and the check-in and calendar defaults are column defaults on org_settings.
+-- Everything is editable under Settings.

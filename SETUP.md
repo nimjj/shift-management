@@ -164,3 +164,169 @@ project (same SQL in `supabase/migrations/20261108000004_assignments.sql` and `.
 - Assign, reassign and unassign are all one database call that sets the whole roster of a cell, so a
   cell can never be left half-changed and every edit writes exactly one audit row.
 - Each assignment gets a 64-character check-in token now; M6 puts it in the calendar invite.
+
+---
+
+## M4 to M8: check-in, alerts, calendar, dashboard, audit log
+
+### 0. Apply the two new migrations (required before anything below works)
+The code for M4 to M8 is in the repo, but it needs two schema changes:
+
+- `supabase/migrations/20261111000006_checkin_calendar.sql`
+- `supabase/migrations/20261111000007_rules_alerts_cron.sql`
+
+Either approve them when Claude applies them through the Supabase connector, or do it by hand:
+Supabase dashboard > **SQL Editor** > paste the whole of file `...000006...`, **Run**; then the same for
+`...000007...`. Run them in that order, once each. (For a fresh project, `npx supabase db push` applies
+every migration in order.)
+
+Check: **Table Editor** shows `notification_rules` with three rows (the 10 / 15 / 17 ladder).
+
+Until they are applied, the dashboard and grid still open but Settings > Check-in rules, Notification
+rules, Groups and Calendar show an error.
+
+### What works with no further setup
+Check-in (the link, and the button on My shifts), check-in rules, test shifts, derived statuses on the
+grid, the live dashboard, History, the audit log, and editing the notification ladder. Sending is what
+needs the integrations below; each one is independent, and Settings shows a "Not connected yet" note
+for any that is missing.
+
+### 1. Deploy to Vercel (if you have not done M1 step 8 yet)
+The every-minute checker and the Telegram webhook both need a public URL, so do M1 steps 8 and 9 first.
+
+### 2. The every-minute checker
+1. Make a long random secret, for example in PowerShell:
+   `[Convert]::ToBase64String((1..32 | % { Get-Random -Max 256 }))`
+2. Vercel > Project > **Settings > Environment Variables**: add `CRON_SECRET` = that value. Redeploy.
+3. Supabase > **SQL Editor**, run (with your own values; this stores them encrypted in Vault):
+   ```sql
+   select vault.create_secret('https://YOUR-APP.vercel.app', 'app_url');
+   select vault.create_secret('THE-SAME-VALUE-AS-CRON_SECRET', 'cron_secret');
+   ```
+   The second migration already scheduled the job; it does nothing until these two secrets exist.
+4. Check, a minute later: `select status, return_message from cron.job_run_details order by start_time desc limit 3;`
+   shows `succeeded`, and `select status_code, content from net._http_response order by id desc limit 3;`
+   shows `200` and `{"ok":true,...}`. A `401` means the two secrets differ; `503` means `CRON_SECRET`
+   is not set in Vercel.
+
+To change the URL later (custom domain): `select vault.update_secret(id, 'https://shifts.adept-tech.us') from vault.secrets where name = 'app_url';`
+
+### 3. Google service account (email alerts and calendar invites)
+1. Google Cloud console, the same project as the sign-in client: **APIs & Services > Library**, enable
+   **Gmail API** and **Google Calendar API**.
+2. **IAM & Admin > Service Accounts > Create service account** (name `shiftboard`). No roles needed.
+   Open it > **Keys > Add key > Create new key > JSON**. A file downloads: treat it like a password and
+   keep it out of the project folder.
+3. On the service account's **Details** tab copy its **Unique ID** (a long number, the client ID).
+4. **Google Workspace admin** (admin.google.com) > **Security > Access and data control > API controls >
+   Manage domain-wide delegation > Add new**:
+   - Client ID: the Unique ID
+   - OAuth scopes: `https://www.googleapis.com/auth/calendar.events,https://www.googleapis.com/auth/gmail.send`
+5. Vercel environment variables:
+   - `GOOGLE_SERVICE_ACCOUNT_JSON`: the contents of the JSON file. Pasting it as base64 avoids
+     line-break trouble: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\key.json"))`
+   - `ALERT_EMAIL_SENDER`: the mailbox alerts come from. It must be a real Workspace user (or an alias
+     of one). Using an existing mailbox costs nothing; a new user is a paid seat.
+   - `GOOGLE_CALENDAR_OWNER`: the Workspace user who owns the shared calendar (can be the same mailbox).
+   Redeploy.
+6. Check: **Settings > Notification rules > Send test to me** on any stage. The email arrives, and the
+   attempt is listed under Recent alerts. An error mentioning delegation means step 4 (it can take a few
+   minutes to take effect).
+
+### 4. Telegram
+1. In Telegram, message **@BotFather**: `/newbot`, choose a name and a username. It replies with a token.
+2. Vercel environment variables: `TELEGRAM_BOT_TOKEN` (the token), `TELEGRAM_BOT_USERNAME` (without `@`),
+   `TELEGRAM_WEBHOOK_SECRET` (any long random string of letters, digits, `_` and `-`). Redeploy.
+3. Point the bot at the app. Put the same three values and the deployed `APP_URL` in `.env.local`, then:
+   ```
+   npm run telegram:set-webhook
+   ```
+   (Run it again whenever the app's URL changes.)
+4. Check: **My notifications > Connect Telegram > Open Telegram > Start**. The bot answers "Connected",
+   the page flips to connected by itself, and **Send test message** arrives on your phone.
+
+### 5. Calendar invites
+1. Signed in to Google Calendar as the `GOOGLE_CALENDAR_OWNER` user: **Other calendars > + > Create new
+   calendar**, name it `Voicify Shifts`.
+2. That calendar's **Settings > Integrate calendar**: copy the **Calendar ID**.
+3. ShiftBoard: **Settings > Calendar**: paste the ID, tick **Send a Google Calendar invite**, save.
+   Invites for every assignment on a shift that has not ended are sent straight away.
+4. Check: assign yourself on the grid. An invite arrives with the check-in link in the description.
+
+### Checks for M4: check-in (about 10 minutes)
+1. **Shifts > Test shift**: start in `20` minutes, tick yourself, create. Open **My shifts**: it shows the
+   shift as Upcoming with "Check-in opens ...". Copy your check-in link from the calendar invite, or wait
+   for the button.
+2. **Settings > Check-in rules**: change "Opens" to `30` and save. Reload My shifts: the big **Check in**
+   button is now there, with no redeploy.
+3. Press **Check in**: "You are checked in". Press the link again or reload: the same time, unchanged.
+4. Sign in as another agent and open your check-in link: "Check-in link not found" (it is not for their account).
+5. Give one block an override (for example Late after `2`): only that block's card says "(overridden)".
+   Clear the fields and save: it goes back to the default.
+
+### Checks for M5: alerts (needs sections 2 to 4)
+Use test shifts that started 9 minutes ago, so things fire within a minute or two.
+1. **Solo, nobody checks in**: you get the reminder at +10 and +15 and the supervisor alert at +17.
+2. **Pair, one checks in before +10**: the other gets reminder 1 only; no second reminder, no alert.
+3. **Check in between +10 and +15**: nothing further arrives.
+4. Edit a stage's minutes or message while a test shift runs: it applies from the next minute.
+   Untick **Enabled** on the +15 stage: it does not fire.
+5. Set quiet hours covering now under My notifications: reminder 1 is logged as **suppressed** under
+   Recent alerts, while the supervisor alert (critical) still arrives.
+6. Every send, failure and suppression is a row under **Settings > Notification rules > Recent alerts**.
+
+### Checks for M6: calendar (needs sections 3 and 5)
+1. Assign yourself: the invite arrives within seconds, with reminders at 30 and 10 minutes.
+2. Unassign: a cancellation arrives. Reassign to someone else: they get an invite.
+3. Put a wrong calendar ID in Settings > Calendar and assign: the roster still saves, and the cell shows
+   **invite failed**. Fix the ID, open the cell, press **Retry invite**. Press it twice: still one event.
+
+### Checks for M7: dashboard
+1. Open the dashboard (home page) on a laptop; the dot at the top says **Live**.
+2. Check in on a phone with a test shift: the chip turns green on the laptop within a few seconds.
+3. Let a test shift end with nobody in: it is **Missed** under History, and the monthly totals match.
+
+### Checks for M8: audit log
+**Settings > Audit log** lists every change you made above, with who, when, and before/after.
+`npm test` includes `lib/audit-coverage.test.ts`, which fails if any function a signed-in user can call
+is not either an audited mutation or a listed exception, if a table gains a write policy, or if a
+server action skips the shared wrapper.
+
+### Notes
+- **Delivery is at-most-once.** A stage is claimed in the database before it is sent, so two overlapping
+  checker runs can never both send it. The cost: a send that fails twice is logged as failed and not
+  retried a minute later. That is deliberate, so a flapping channel cannot spam people.
+- **Quiet hours** suppress non-critical stages. The supervisor alert is seeded as critical.
+- **An unstaffed shift alerts the supervisors** at +17 like any uncovered shift ("Assigned: nobody").
+- **Reminders in the invite**: Google only shows the organiser's reminders on the organiser's copy, so
+  after sending an invite the app sets the 30 / 10 minute pop-ups on the agent's own copy, acting as
+  the agent. That step is best effort and does not mark the invite as failed if it does not take.
+- Seed agents still have `@placeholder.invalid` addresses. Email and invites to those are refused with a
+  clear message until you enter real addresses under Settings > Employees.
+
+---
+
+## Go-live checklist
+1. **Confirm the block times with the client** (Settings > Shift templates). They came from the old sheet.
+2. **Real emails** for every agent (Settings > Employees), and each agent signs in once.
+3. **Production Supabase project**: create it, `npx supabase link` + `npx supabase db push` (applies all
+   seven migrations), run `supabase/seed.sql`, repeat M1 steps 3 to 5 (Google sign-in, email/password
+   off, the domain hook), and add the two Vault secrets from section 2.
+4. **Vercel Pro** project (or promote the existing one) with every environment variable from
+   `.env.example` pointing at production values; add the custom domain `shifts.adept-tech.us` and set
+   `APP_URL` to it.
+5. **Redirect URLs**: add the production domain in Supabase > Authentication > URL Configuration, and the
+   production Supabase callback URL to the Google OAuth client.
+6. **Telegram**: run `npm run telegram:set-webhook` with the production `APP_URL`.
+7. **Vault**: `app_url` = the production URL (section 2).
+8. **Calendar**: paste the calendar ID in the production app and switch invites on.
+9. Delete any test shifts, then run one weekend alongside the old sheet before retiring it.
+10. Make the GitHub repo private if it is not already, and keep the service-account key only in Vercel
+    and a password manager.
+
+## Not built yet (later phases)
+- **Phase 2**: browser push (installable PWA), shift-swap requests, escalation to a backup assignee,
+  check-out and handover notes, CSV import of the old roster.
+- **Phase 3**: the tickets log, reports, weekday coverage, WhatsApp alerts.
+- The Resend email fallback named in CLAUDE.md is not wired up (it is a separate paid service; say if
+  you want it).

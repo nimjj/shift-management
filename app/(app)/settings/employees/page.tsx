@@ -14,7 +14,7 @@ export default async function EmployeesPage() {
 
   const { data, error } = await supabase
     .from("employees")
-    .select("*, employee_notification_prefs(display_tz)")
+    .select("*, employee_notification_prefs(display_tz, channels)")
     .order("active", { ascending: false })
     .order("full_name");
   if (error) throw error;
@@ -38,6 +38,7 @@ export default async function EmployeesPage() {
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Display TZ</TableHead>
+            <TableHead>Channels</TableHead>
             <TableHead>Status</TableHead>
             <TableHead />
           </TableRow>

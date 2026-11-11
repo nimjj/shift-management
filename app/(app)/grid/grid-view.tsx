@@ -7,13 +7,16 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { selectClass } from "@/components/form-styles";
+import { AssignmentChip, Pill, ShiftChip } from "@/components/status-chip";
+import type { AssignmentStatus, ShiftStatus } from "@/lib/status";
 import { ASSIGNMENT_ROLES, COPY_SKIP_LABELS, coverageOf, type AssignmentRole } from "@/lib/assignments";
-import { copyWeekAction, setAssignmentsAction } from "./actions";
+import { copyWeekAction, retryInviteAction, setAssignmentsAction } from "./actions";
 
 export type GridModel = {
   offset: number;
   clientTz: string;
   displayTz: string;
+  calendarEnabled: boolean;
   employees: { id: string; full_name: string; role: string }[];
   weeks: { key: string; label: string }[];
   rows: {
@@ -34,7 +37,16 @@ export type GridCell = {
   startsAt: string;
   finished: boolean;
   started: boolean;
-  assignees: { employeeId: string; role: AssignmentRole; checkedIn: boolean }[];
+  status: ShiftStatus;
+  assignees: {
+    assignmentId: string;
+    employeeId: string;
+    role: AssignmentRole;
+    checkedIn: boolean;
+    status: AssignmentStatus;
+    calendar: string;
+    calendarError: string | null;
+  }[];
 };
 
 type Selection = { rowIndex: number; weekIndex: number };
@@ -146,6 +158,8 @@ export function GridView({ model }: { model: GridModel }) {
           employees={model.employees}
           clientTz={model.clientTz}
           displayTz={model.displayTz}
+          calendarEnabled={model.calendarEnabled}
+          names={names}
           onClose={() => setSelected(null)}
         />
       ) : null}
@@ -182,14 +196,22 @@ function CellBody({
                   backup
                 </Badge>
               ) : null}
-              {a.checkedIn ? <span title="Checked in">✓</span> : null}
+              {a.status === "upcoming" ? null : <AssignmentChip status={a.status} />}
+              {a.calendar === "failed" ? (
+                <span title={a.calendarError ?? "The calendar invite failed"}>
+                  <Pill tone="amber">invite failed</Pill>
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
-      <div className={`mt-1 text-xs ${COVERAGE_STYLE[coverage]}`}>
-        {primaries.length}/{required}
-        {cell.finished ? " · finished" : cell.started ? " · running" : ""}
+      <div className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs ${COVERAGE_STYLE[coverage]}`}>
+        <span>
+          {primaries.length}/{required}
+          {cell.finished ? " · finished" : cell.started ? " · running" : ""}
+        </span>
+        {cell.status === "upcoming" ? null : <ShiftChip status={cell.status} />}
       </div>
     </>
   );
@@ -202,8 +224,12 @@ function CellEditor({
   employees,
   clientTz,
   displayTz,
+  calendarEnabled,
+  names,
   onClose,
 }: {
+  calendarEnabled: boolean;
+  names: Map<string, string>;
   block: string;
   required: number;
   cell: GridCell;
@@ -322,8 +348,54 @@ function CellEditor({
             ) : null}
           </form>
         )}
+
+        {calendarEnabled && cell.assignees.length > 0 ? (
+          <div className="space-y-2 border-t pt-3">
+            <h3 className="text-sm font-medium">Calendar invites</h3>
+            <ul className="space-y-2">
+              {cell.assignees.map((a) => (
+                <InviteRow key={a.assignmentId} assignee={a} name={names.get(a.employeeId) ?? "Unknown"} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+const CALENDAR_TONE: Record<string, "grey" | "green" | "amber"> = {
+  sent: "green",
+  failed: "amber",
+  pending: "grey",
+  disabled: "grey",
+};
+
+function InviteRow({ assignee, name }: { assignee: GridCell["assignees"][number]; name: string }) {
+  const [state, formAction, pending] = useActionState(retryInviteAction, null);
+  const failed = assignee.calendar === "failed";
+
+  return (
+    <li className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="min-w-32">{name}</span>
+      <Pill tone={CALENDAR_TONE[assignee.calendar] ?? "grey"}>
+        {assignee.calendar === "sent" ? "invite sent" : assignee.calendar === "pending" ? "sending…" : `invite ${assignee.calendar}`}
+      </Pill>
+      <form action={formAction}>
+        <input type="hidden" name="assignment_id" value={assignee.assignmentId} />
+        <Button type="submit" size="xs" variant="outline" disabled={pending}>
+          {pending ? "Sending…" : failed ? "Retry invite" : "Resend invite"}
+        </Button>
+      </form>
+      {state?.ok ? <span className="text-xs text-muted-foreground">Sent.</span> : null}
+      {state && !state.ok ? (
+        <span role="alert" className="text-xs text-destructive">
+          {state.error}
+        </span>
+      ) : failed && assignee.calendarError ? (
+        <span className="text-xs text-muted-foreground">{assignee.calendarError}</span>
+      ) : null}
+    </li>
   );
 }
 

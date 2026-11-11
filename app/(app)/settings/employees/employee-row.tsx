@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Pill } from "@/components/status-chip";
 import { updateEmployee } from "./actions";
 import { EmployeeForm, type EmployeeWithPrefs } from "./employee-form";
 
@@ -23,6 +24,12 @@ export function EmployeeRow({ employee, isSelf }: { employee: EmployeeWithPrefs;
           <Badge variant={employee.role === "supervisor" ? "default" : "secondary"}>{employee.role}</Badge>
         </TableCell>
         <TableCell>{employee.employee_notification_prefs?.display_tz ?? "—"}</TableCell>
+        <TableCell>
+          <span className="flex flex-wrap gap-1">
+            <Pill tone="green">email</Pill>
+            {employee.telegram_chat_id ? <Pill tone="green">Telegram linked</Pill> : <Pill>no Telegram</Pill>}
+          </span>
+        </TableCell>
         <TableCell>{employee.active ? "Active" : "Inactive"}</TableCell>
         <TableCell className="text-right">
           <Button variant="outline" size="sm" onClick={() => setEditing((v) => !v)}>
@@ -32,7 +39,7 @@ export function EmployeeRow({ employee, isSelf }: { employee: EmployeeWithPrefs;
       </TableRow>
       {editing ? (
         <TableRow>
-          <TableCell colSpan={6} className="bg-muted/30 p-4">
+          <TableCell colSpan={7} className="bg-muted/30 p-4">
             <EmployeeForm
               employee={employee}
               action={updateEmployee}

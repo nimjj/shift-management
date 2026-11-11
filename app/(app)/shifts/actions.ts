@@ -1,9 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { ActionError, supervisorAction, type ActionResult } from "@/lib/actions";
 import { buildGenerationRows, MAX_GENERATE_WEEKS, regenerationPayload, type TemplateInput } from "@/lib/shifts";
+import { normaliseAssignees } from "@/lib/assignments";
+import { syncCalendarQuietly } from "@/lib/calendar-sync";
+import type { MutationData } from "@/lib/mutate";
 import { loadRegeneration } from "./regenerate/compute";
 
 export type GenerateState = ActionResult<{ requested: number; inserted: number; skipped: number }> | null;
@@ -61,6 +65,64 @@ export async function applyRegenerationAction(_prev: ApplyState, formData: FormD
   if (result.ok) {
     revalidatePath("/shifts");
     revalidatePath("/shifts/regenerate");
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Test shifts: try check-in and alerts without waiting for a weekend.
+// ---------------------------------------------------------------------------
+export type TestShiftState = ActionResult<MutationData["create_test_shift"]> | null;
+export type DeleteTestShiftState = ActionResult<MutationData["delete_test_shift"]> | null;
+
+const testShiftSchema = z.object({
+  starts_in_min: z.coerce.number().int().min(-720, "At most 12 hours ago").max(10080, "At most 7 days ahead"),
+  duration_min: z.coerce.number().int().min(5, "At least 5 minutes").max(1440, "At most 24 hours"),
+  employee_ids: z.array(z.string().uuid()).max(20),
+  notes: z.string().trim().max(200).optional(),
+});
+
+function revalidateShifts() {
+  for (const p of ["/shifts", "/", "/my-shifts", "/history"]) revalidatePath(p);
+}
+
+/** "Create test shift starting in N minutes" (N may be negative: a shift that started N minutes ago). */
+export async function createTestShiftAction(_prev: TestShiftState, formData: FormData): Promise<TestShiftState> {
+  const result = await supervisorAction(
+    testShiftSchema,
+    {
+      starts_in_min: formData.get("starts_in_min")?.toString() ?? "",
+      duration_min: formData.get("duration_min")?.toString() ?? "",
+      employee_ids: formData.getAll("employee_id").map((v) => v.toString()),
+      notes: formData.get("notes")?.toString() ?? undefined,
+    },
+    async ({ input, mutate }) =>
+      mutate("create_test_shift", {
+        p_starts_in_min: input.starts_in_min,
+        p_duration_min: input.duration_min,
+        p_assignees: normaliseAssignees(input.employee_ids.map((employee_id) => ({ employee_id, role: "primary" }))),
+        p_notes: input.notes || undefined,
+      }),
+  );
+  if (result.ok) {
+    revalidateShifts();
+    after(() => syncCalendarQuietly());
+  }
+  return result;
+}
+
+export async function deleteTestShiftAction(
+  _prev: DeleteTestShiftState,
+  formData: FormData,
+): Promise<DeleteTestShiftState> {
+  const result = await supervisorAction(
+    z.object({ shift_id: z.string().uuid() }),
+    { shift_id: formData.get("shift_id")?.toString() ?? "" },
+    async ({ input, mutate }) => mutate("delete_test_shift", { p_shift_id: input.shift_id }),
+  );
+  if (result.ok) {
+    revalidateShifts();
+    after(() => syncCalendarQuietly()); // cancels the invites of the deleted assignments
   }
   return result;
 }

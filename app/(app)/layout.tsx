@@ -11,25 +11,36 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
-          <nav className="flex items-center gap-5 text-sm">
+          <nav className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
             <Link href="/" className="font-semibold">
               ShiftBoard
             </Link>
-            <Link href="/my-shifts" className="text-muted-foreground hover:text-foreground">
-              My shifts
-            </Link>
             {isSupervisor ? (
               <>
+                <Link href="/" className="text-muted-foreground hover:text-foreground">
+                  Dashboard
+                </Link>
                 <Link href="/grid" className="text-muted-foreground hover:text-foreground">
                   Grid
                 </Link>
                 <Link href="/shifts" className="text-muted-foreground hover:text-foreground">
                   Shifts
                 </Link>
-                <Link href="/settings" className="text-muted-foreground hover:text-foreground">
-                  Settings
+                <Link href="/history" className="text-muted-foreground hover:text-foreground">
+                  History
                 </Link>
               </>
+            ) : null}
+            <Link href="/my-shifts" className="text-muted-foreground hover:text-foreground">
+              My shifts
+            </Link>
+            <Link href="/notifications" className="text-muted-foreground hover:text-foreground">
+              My notifications
+            </Link>
+            {isSupervisor ? (
+              <Link href="/settings" className="text-muted-foreground hover:text-foreground">
+                Settings
+              </Link>
             ) : null}
           </nav>
           <div className="flex items-center gap-3 text-sm">

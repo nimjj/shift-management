@@ -7,6 +7,8 @@ import {
   type AssignmentRole,
   type GridShift,
 } from "@/lib/assignments";
+import { rulesByTemplate } from "@/lib/settings";
+import { assignmentStatus, shiftStatus } from "@/lib/status";
 import { createClient } from "@/lib/supabase/server";
 import { effectiveTimeZone } from "@/lib/shifts";
 import { formatLocalDate, formatRangeIn, formatDayIn } from "@/lib/time";
@@ -22,11 +24,12 @@ export default async function GridPage({ searchParams }: PageProps<"/grid">) {
   const offset = Number.isFinite(raw) ? Math.max(-52, Math.min(52, Math.trunc(raw))) : 0;
   const now = new Date();
 
-  const [orgRes, prefsRes, templatesRes, employeesRes] = await Promise.all([
+  const [orgRes, prefsRes, templatesRes, employeesRes, overridesRes] = await Promise.all([
     supabase.from("org_settings").select("*").eq("id", 1).single(),
     supabase.from("employee_notification_prefs").select("display_tz").eq("employee_id", actor.id).maybeSingle(),
     supabase.from("shift_templates").select("*").order("code"),
     supabase.from("employees").select("id, full_name, role").eq("active", true).order("full_name"),
+    supabase.from("template_overrides").select("*"),
   ]);
   if (orgRes.error) throw orgRes.error;
   if (templatesRes.error) throw templatesRes.error;
@@ -34,12 +37,13 @@ export default async function GridPage({ searchParams }: PageProps<"/grid">) {
 
   const org = orgRes.data;
   const displayTz = prefsRes.data?.display_tz ?? org.default_display_tz;
+  const rulesFor = rulesByTemplate(org, overridesRes.data ?? []);
   const weeks = gridWeeks(now, org, offset);
   const { from, to } = gridRange(weeks);
 
   const shiftsRes = await supabase
     .from("shifts")
-    .select("id, template_id, occurrence_date, starts_at, ends_at, assignments(id, employee_id, role, checked_in_at)")
+    .select("id, template_id, occurrence_date, starts_at, ends_at, assignments(id, employee_id, role, checked_in_at, calendar_status, calendar_error)")
     .not("template_id", "is", null)
     .gte("occurrence_date", formatLocalDate(from))
     .lt("occurrence_date", formatLocalDate(to))
@@ -65,6 +69,7 @@ export default async function GridPage({ searchParams }: PageProps<"/grid">) {
     offset,
     clientTz: org.client_tz,
     displayTz,
+    calendarEnabled: org.calendar_enabled,
     employees: employeesRes.data,
     weeks: weeks.map((w) => ({
       key: formatLocalDate(w),
@@ -82,6 +87,8 @@ export default async function GridPage({ searchParams }: PageProps<"/grid">) {
         const full = byId.get(shift.id)!;
         const start = new Date(full.starts_at);
         const end = new Date(full.ends_at);
+        const rules = rulesFor(t.id);
+        const all = full.assignments ?? [];
         return {
           shiftId: full.id,
           clientTime: formatRangeIn(start, end, effectiveTimeZone(t, org)),
@@ -89,11 +96,21 @@ export default async function GridPage({ searchParams }: PageProps<"/grid">) {
           startsAt: full.starts_at,
           finished: end <= now,
           started: start <= now,
-          assignees: (full.assignments ?? [])
+          status: shiftStatus(
+            all.filter((a) => a.role === "primary"),
+            full,
+            rules,
+            now,
+          ),
+          assignees: all
             .map((a) => ({
+              assignmentId: a.id,
               employeeId: a.employee_id,
               role: a.role as AssignmentRole,
               checkedIn: a.checked_in_at !== null,
+              status: assignmentStatus(a, full, rules, now),
+              calendar: a.calendar_status,
+              calendarError: a.calendar_error,
             }))
             .sort((x, y) => x.role.localeCompare(y.role) || x.employeeId.localeCompare(y.employeeId)),
         };
