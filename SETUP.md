@@ -169,21 +169,16 @@ project (same SQL in `supabase/migrations/20261108000004_assignments.sql` and `.
 
 ## M4 to M8: check-in, alerts, calendar, dashboard, audit log
 
-### 0. Apply the two new migrations (required before anything below works)
-The code for M4 to M8 is in the repo, but it needs two schema changes:
+### 0. The two new migrations
+Already applied to the dev project on 11 Nov 2026 (through the Supabase connector):
 
 - `supabase/migrations/20261111000006_checkin_calendar.sql`
 - `supabase/migrations/20261111000007_rules_alerts_cron.sql`
 
-Either approve them when Claude applies them through the Supabase connector, or do it by hand:
-Supabase dashboard > **SQL Editor** > paste the whole of file `...000006...`, **Run**; then the same for
-`...000007...`. Run them in that order, once each. (For a fresh project, `npx supabase db push` applies
-every migration in order.)
+Nothing to do here for dev. For a fresh project (production later), `npx supabase db push` applies every
+migration in order; or paste each file into the Supabase **SQL Editor** in that order, once each.
 
 Check: **Table Editor** shows `notification_rules` with three rows (the 10 / 15 / 17 ladder).
-
-Until they are applied, the dashboard and grid still open but Settings > Check-in rules, Notification
-rules, Groups and Calendar show an error.
 
 ### What works with no further setup
 Check-in (the link, and the button on My shifts), check-in rules, test shifts, derived statuses on the
